@@ -18,13 +18,12 @@ package se.qbranch.tomcat.valve;
 
 import java.io.IOException;
 import java.util.regex.Pattern;
-
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletResponse;
-
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
 import org.apache.catalina.valves.RequestFilterValve;
+
 
 /**
  * Concrete implementation of <code>RequestFilterValve</code> that filters
@@ -42,117 +41,135 @@ import org.apache.catalina.valves.RequestFilterValve;
  * Example of only allowing access from 127.0.0.1 on the tomcat manager application.<BR/>
  * Usage: <code>&lt;Valve className="se.qbranch.tomcat.valve.BlockAccessByPathValve" path="/manager/.*" allow="127\.0\.0\.1"/&gt;</code>
  * </p>
- * 
+ *
  * @author Leonard Axelsson
  * @version 1.0
  */
 public final class BlockAccessByPathValve extends RequestFilterValve {
 
-	/**
-	 * The descriptive information regarding the implementation
-	 */
-	private static final String info = "se.qbranch.tomcat.valve.BlockAccessByPathValve/1.0";
+    /**
+     * The descriptive information regarding the implementation
+     */
+    private static final String info = "se.qbranch.tomcat.valve.BlockAccessByPathValve/1.0";
 
-	/**
-	 * The path to block access on, specified as a list of comma-separated
-	 * regular expressions.
-	 */
-	private String path;
+    /**
+     * The path to block access on, specified as a list of comma-separated
+     * regular expressions.
+     */
+    private String path;
 
-	/**
-	 * The paths to block access on as regular expression objects. Patterns are
-	 * parsed from <code>path</code>.
-	 */
-	private Pattern[] paths;
+    /**
+     * The paths to block access on as regular expression objects. Patterns are
+     * parsed from <code>path</code>.
+     */
+    private Pattern[] paths;
 
-	/**
-	 * Returns the descriptive information regarding this valve implementation
-	 */
-	@Override
-	public String getInfo() {
-		return info;
-	}
+    private Pattern denyPattern;
+    private Pattern allowPattern;
 
-	/**
-	 * Returns the string representation of the regular expressions for the paths that are blocked.
-	 * 
-	 * @return comma separated regular expressions for paths to be blocked
-	 */
-	public String getPath() {
-		return path;
-	}
+    /**
+     * Returns the descriptive information regarding this valve implementation
+     */
+    @Override
+    public String getInfo() {
 
-	/**
-	 * Sets the path to block access on and builds <code>Pattern</code> objects
-	 * from it.
-	 * 
-	 * @param path
-	 *            the paths to block access on specified as a comma separated
-	 *            list
-	 */
-	public void setPath(String path) {
-		paths = precalculate(path);
-		this.path = path;
-	}
+        return info;
+    }
 
-	/**
-	 * Extracts the remote address and request path from the request object and
-	 * match to the regular expressions specified in path, allow and deny
-	 * 
-	 * 
-	 * @param request
-	 *            The servlet request to be processed
-	 * @param response
-	 *            The servlet response to be created
-	 * 
-	 * @exception IOException
-	 *                IOException if an input/output error occurs
-	 * @exception ServletException
-	 *                ServletException if a servlet error occurs
-	 */
-	@Override
-	public void invoke(Request request, Response response) throws IOException,
-			ServletException {
-		String remoteAddr = request.getRemoteAddr();
-		String requestedPath = request.getRequestURI();
+    /**
+     * Returns the string representation of the regular expressions for the paths that are blocked.
+     *
+     * @return comma separated regular expressions for paths to be blocked
+     */
+    public String getPath() {
 
-		boolean pathBlocked = false;
-		for (Pattern p : paths) {
-			if (p.matcher(requestedPath).matches()) {
-				pathBlocked = true;
-				break;
-			}
-		}
+        return path;
+    }
 
-		if (pathBlocked) {
-			// Check the deny patterns, if any
-			for (int i = 0; i < denies.length; i++) {
-				if (denies[i].matcher(remoteAddr).matches()) {
-					response.sendError(HttpServletResponse.SC_NOT_FOUND);
-					return;
-				}
-			}
+    /**
+     * Sets the path to block access on and builds <code>Pattern</code> objects
+     * from it.
+     *
+     * @param path the paths to block access on specified as a comma separated
+     *             list
+     */
+    public void setPath(String path) {
 
-			// Check the allow patterns, if any
-			for (int i = 0; i < allows.length; i++) {
-				if (allows[i].matcher(remoteAddr).matches()) {
-					getNext().invoke(request, response);
-					return;
-				}
-			}
+        paths = precalculate( path );
+        this.path = path;
+    }
 
-			// Allow if denies specified but not allows
-			if ((denies.length > 0) && (allows.length == 0)) {
-				getNext().invoke(request, response);
-				return;
-			}
+    private Pattern getDenyPattern() {
 
-			// Deny this request
-			response.sendError(HttpServletResponse.SC_NOT_FOUND);
-			return;
-		}
+        if (null == denyPattern && null != deny) {
+            denyPattern = Pattern.compile( deny );
+        }
 
-		getNext().invoke(request, response);
-	}
+        return denyPattern;
+    }
 
+    private Pattern getAllowPattern() {
+
+        if (null == allowPattern && null != allow) {
+            allowPattern = Pattern.compile( allow );
+        }
+
+        return allowPattern;
+    }
+
+    /**
+     * Extracts the remote address and request path from the request object and
+     * match to the regular expressions specified in path, allow and deny
+     *
+     * @param request  The servlet request to be processed
+     * @param response The servlet response to be created
+     *
+     * @throws IOException      IOException if an input/output error occurs
+     * @throws ServletException ServletException if a servlet error occurs
+     */
+    @Override
+    public void invoke(Request request, Response response)
+            throws IOException, ServletException {
+
+        String remoteAddr = request.getRemoteAddr();
+        String requestedPath = request.getRequestURI();
+
+        boolean pathBlocked = false;
+        for (Pattern p : paths) {
+            if (p.matcher( requestedPath ).matches()) {
+                pathBlocked = true;
+                break;
+            }
+        }
+
+        if (pathBlocked) {
+            // Check the deny pattern, if any
+            if (null != getDenyPattern()) {
+                if (getDenyPattern().matcher( remoteAddr ).matches()) {
+                    response.sendError( HttpServletResponse.SC_NOT_FOUND );
+                    return;
+                }
+            }
+
+            // Check the allow pattern, if any
+            if (null != getAllowPattern()) {
+                if (getAllowPattern().matcher( remoteAddr ).matches()) {
+                    getNext().invoke( request, response );
+                    return;
+                }
+            }
+
+            // Allow if denies specified but not allows
+            if ((null != getDenyPattern()) && (null == getAllowPattern())) {
+                getNext().invoke( request, response );
+                return;
+            }
+
+            // Deny this request
+            response.sendError( HttpServletResponse.SC_NOT_FOUND );
+            return;
+        }
+
+        getNext().invoke( request, response );
+    }
 }
